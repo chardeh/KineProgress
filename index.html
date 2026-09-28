@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Physio Progress</title>
+<style>
+:root{--bg:#f2f5f7;--card:#fff;--ink:#14202b;--mut:#5d6b78;--line:#d8e0e6;--ac:#2454d6;--acs:#e6edfc;--bad:#c2410c}
+@media(prefers-color-scheme:dark){:root{--bg:#0f161d;--card:#18222c;--ink:#e6edf3;--mut:#93a3b1;--line:#2a3743;--ac:#6f95ff;--acs:#1e2d4d;--bad:#fb923c}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 "Avenir Next",Avenir,"Segoe UI",system-ui,sans-serif}
+header{padding:20px 16px 0;max-width:820px;margin:auto}
+h1{margin:0;font-size:1.6rem;letter-spacing:-.01em}
+header p{margin:2px 0 12px;color:var(--mut)}
+nav{display:flex;gap:4px;border-bottom:1px solid var(--line);overflow-x:auto}
+nav button{background:none;border:0;border-bottom:3px solid transparent;padding:10px 14px;font:inherit;color:var(--mut);cursor:pointer}
+nav button.on{color:var(--ink);border-color:var(--ac);font-weight:600}
+main{max-width:820px;margin:auto;padding:16px}
+section{display:none}section.on{display:block}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px;margin-bottom:14px}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:space-between;margin-bottom:8px}
+.ex{border-top:1px solid var(--line);padding-top:10px;margin-top:10px}
+.set{display:flex;gap:8px;align-items:center;margin:6px 0;color:var(--mut)}
+.set span:first-child{width:44px}
+input,select,button{font:inherit;color:var(--ink)}
+input,select{background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:6px 8px;min-width:0}
+input[type=number]{width:72px}
+input[data-f=name]{flex:1;font-weight:600}
+button{background:var(--acs);border:1px solid transparent;border-radius:6px;padding:6px 12px;cursor:pointer}
+button:hover{border-color:var(--ac)}
+button.pri{background:var(--ac);color:#fff}
+button.x{background:none;color:var(--mut)}button.x:hover{color:var(--bad);border-color:var(--bad)}
+:focus-visible{outline:2px solid var(--ac);outline-offset:1px}
+.ctl{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+.ctl label{display:flex;flex-direction:column;font-size:.8rem;color:var(--mut);gap:2px}
+.cv{position:relative;height:340px}
+table{width:100%;border-collapse:collapse;font-size:.92rem}
+th,td{padding:8px 6px;text-align:right;border-bottom:1px solid var(--line)}
+th:first-child,td:first-child{text-align:left}th{color:var(--mut);font-weight:500}
+.up{color:#15803d}.dn{color:var(--bad)}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:14px}
+.tiles div{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+.tiles b{display:block;font-size:1.5rem}.tiles small{color:var(--mut)}
+.scroll{overflow-x:auto}
+#save{font-size:.8rem;color:var(--mut)}
+@media print{header,nav,.ctl button{display:none}section{display:block!important}body{background:#fff}}
+</style>
+</head>
+<body>
+<header>
+<h1>Physio progress</h1>
+<p>Everything you change saves automatically in this browser. <span id="save"></span></p>
+<nav id="nav"><button data-t="log" class="on">Log</button><button data-t="charts">Charts</button><button data-t="report">Report</button><button data-t="data">Backup</button></nav>
+</header>
+<main>
+<section id="log" class="on"><div class="row"><button class="pri" data-a="addS">+ New session</button></div><div id="logList"></div><datalist id="names"></datalist></section>
+
+<section id="charts">
+<div class="card">
+<div class="ctl">
+<label>Exercise<select id="cEx"></select></label>
+<label>Measure<select id="cM"><option value="top">Heaviest weight (kg)</option><option value="rm">Estimated max (kg)</option><option value="vol">Total volume (kg)</option><option value="reps">Total reps</option><option value="avg">Average weight (kg)</option><option value="sets">Sets done</option></select></label>
+<label>Style<select id="cT"><option value="line">Line</option><option value="bar">Bars</option></select></label>
+</div>
+<div class="cv"><canvas id="cv"></canvas></div>
+<p style="color:var(--mut);font-size:.85rem;margin:8px 0 0">Estimated max uses the Epley formula: kg × (1 + reps ÷ 30). Volume is reps × kg summed over all sets.</p>
+</div>
+</section>
+
+<section id="report">
+<div class="ctl">
+<label>From<input type="date" id="rF"></label><label>To<input type="date" id="rT"></label>
+<label>&nbsp;<button onclick="print()">Print / save PDF</button></label>
+</div>
+<div id="rOut"></div>
+</section>
+
+<section id="data">
+<div class="card">
+<p>Your data lives in this browser only. Download a backup now and then, and use it to move your data to another phone or computer.</p>
+<div class="row" style="justify-content:flex-start">
+<button class="pri" data-a="exp">Download backup</button>
+<button data-a="imp">Restore from backup</button>
+<button class="x" data-a="reset">Reset to starting data</button>
+<input type="file" id="file" accept=".json" hidden>
+</div>
+</div>
+</section>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script>
+const KEY='physio-progress-v1',$=id=>document.getElementById(id);
+const uid=()=>Math.random().toString(36).slice(2,9);
+const RAW={
+"2026-09-14":{"Leg press":"15x20,15x20,15x20","Leg curl":"15x15,15x15,15x20"},
+"2026-09-17":{"Leg curl":"15x20,15x20,15x20","Leg press":"15x20,15x20,10x25"},
+"2026-09-18":{"Leg curl":"15x20,15x25,15x25","Leg press":"10x25,10x25,10x25"},
+"2026-09-21":{"Leg curl":"15x25,15x25,15x25","Leg press":"10x25,10x25,10x25"},
+"2026-09-24":{"Leg curl":"15x30,15x30,12x35","Leg press":"12x30,11x30,11x30"},
+"2026-09-25":{"Leg curl":"15x25,15x30,10x35","Leg press":"15x25,10x30,11x30"},
+"2026-09-28":{"Leg curl":"15x30,15x30,10x40","Leg press":"15x25,12x30,11x30"}};
+const seed=()=>Object.entries(RAW).map(([date,ex])=>({id:uid(),date,exercises:Object.entries(ex).map(([name,s])=>({name,sets:s.split(',').map(x=>{const[r,k]=x.split('x');return{reps:+r,kg:+k}})}))}));
+let S;
+try{S=JSON.parse(localStorage.getItem(KEY))}catch(e){}
+if(!Array.isArray(S))S=seed();
+function save(){try{localStorage.setItem(KEY,JSON.stringify(S));$('save').textContent='Saved'}catch(e){$('save').textContent='Could not save: browser storage is blocked'}}
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const fmt=d=>{const[y,m,dd]=d.split('-');return dd+'/'+m};
+const sum=(a,f)=>a.reduce((t,x)=>t+f(x),0);
+
+// data helpers: sorted [date, {exercise: sets[]}]
+function byDate(from,to){const m={};S.forEach(s=>{if(!s.date||(from&&s.date<from)||(to&&s.date>to))return;m[s.date]=m[s.date]||{};s.exercises.forEach(e=>{const n=e.name.trim();if(n)(m[s.date][n]=m[s.date][n]||[]).push(...e.sets.filter(t=>t.reps>0))})});return Object.entries(m).sort((a,b)=>a[0].localeCompare(b[0]))}
+const names=()=>[...new Set(S.flatMap(s=>s.exercises.map(e=>e.name.trim()).filter(Boolean)))].sort();
+function met(sets,m){if(!sets.length)return null;switch(m){
+case'top':return Math.max(...sets.map(t=>t.kg));
+case'rm':return +Math.max(...sets.map(t=>t.kg*(1+t.reps/30))).toFixed(1);
+case'vol':return sum(sets,t=>t.reps*t.kg);
+case'reps':return sum(sets,t=>t.reps);
+case'avg':return +(sum(sets,t=>t.kg)/sets.length).toFixed(1);
+case'sets':return sets.length}}
+
+// ---------- Log ----------
+function renderLog(){
+const list=[...S].sort((a,b)=>b.date.localeCompare(a.date));
+$('names').innerHTML=names().map(n=>`<option value="${esc(n)}">`).join('');
+$('logList').innerHTML=list.length?list.map(s=>`<div class="card" data-s="${s.id}"><div class="row"><input type="date" value="${s.date}" data-f="date"><button class="x" data-a="delS">Delete session</button></div>`+
+s.exercises.map((e,i)=>`<div class="ex" data-e="${i}"><div class="row"><input data-f="name" list="names" value="${esc(e.name)}" placeholder="Exercise name"><button class="x" data-a="delE" title="Remove exercise">✕</button></div>`+
+e.sets.map((t,j)=>`<div class="set" data-j="${j}"><span>Set ${j+1}</span><input type="number" inputmode="numeric" min="0" value="${t.reps}" data-f="reps" aria-label="Reps"><span>reps ×</span><input type="number" inputmode="decimal" min="0" step="0.5" value="${t.kg}" data-f="kg" aria-label="Weight in kg"><span>kg</span><button class="x" data-a="delSet" title="Remove set">✕</button></div>`).join('')+
+`<button data-a="addSet">+ Set</button></div>`).join('')+`<div class="ex"><button data-a="addE">+ Exercise</button></div></div>`).join(''):'<p>No sessions yet. Add your first one.</p>';
+}
+$('logList').addEventListener('input',e=>{
+const f=e.target.dataset.f;if(!f)return;const s=S.find(x=>x.id===e.target.closest('[data-s]').dataset.s);
+if(f==='date')s.date=e.target.value;
+else{const ex=s.exercises[e.target.closest('[data-e]').dataset.e];
+if(f==='name')ex.name=e.target.value;
+else ex.sets[e.target.closest('[data-j]').dataset.j][f]=parseFloat(e.target.value)||0}
+save()});
+$('logList').addEventListener('change',e=>{if(e.target.dataset.f==='date'||e.target.dataset.f==='name'){renderLog();refresh()}});
+
+document.addEventListener('click',e=>{
+const a=e.target.dataset.a;if(!a)return;
+const sEl=e.target.closest('[data-s]'),s=sEl&&S.find(x=>x.id===sEl.dataset.s),eEl=e.target.closest('[data-e]'),ex=s&&eEl&&s.exercises[eEl.dataset.e];
+if(a==='addS'){const last=[...S].sort((a,b)=>b.date.localeCompare(a.date))[0];
+S.push({id:uid(),date:new Date().toISOString().slice(0,10),exercises:last?last.exercises.map(x=>({name:x.name,sets:x.sets.map(t=>({...t}))})):[{name:'',sets:[{reps:10,kg:20}]}]})}
+else if(a==='delS'){if(!confirm('Delete this whole session?'))return;S=S.filter(x=>x!==s)}
+else if(a==='addE')s.exercises.push({name:'',sets:[{reps:10,kg:20}]});
+else if(a==='delE')s.exercises.splice(eEl.dataset.e,1);
+else if(a==='addSet'){const l=ex.sets[ex.sets.length-1];ex.sets.push(l?{...l}:{reps:10,kg:20})}
+else if(a==='delSet')ex.sets.splice(e.target.closest('[data-j]').dataset.j,1);
+else if(a==='exp'){const b=new Blob([JSON.stringify(S,null,1)],{type:'application/json'}),l=document.createElement('a');l.href=URL.createObjectURL(b);l.download='physio-backup-'+new Date().toISOString().slice(0,10)+'.json';l.click();return}
+else if(a==='imp'){$('file').click();return}
+else if(a==='reset'){if(!confirm('Replace everything with the starting data? This cannot be undone.'))return;S=seed()}
+else return;
+save();renderLog();refresh()});
+$('file').addEventListener('change',e=>{const r=new FileReader();r.onload=()=>{try{const d=JSON.parse(r.result);if(!Array.isArray(d))throw 0;S=d;save();renderLog();refresh();alert('Backup restored.')}catch(x){alert('That file is not a valid backup.')}};r.readAsText(e.target.files[0]);e.target.value=''});
+
+// ---------- Charts ----------
+const PAL=['#2454d6','#e4572e','#16a34a','#a855f7','#eab308','#0891b2','#db2777','#65a30d'];
+const ML={top:'Heaviest weight (kg)',rm:'Estimated max (kg)',vol:'Total volume (kg)',reps:'Total reps',avg:'Average weight (kg)',sets:'Sets done'};
+let chart;
+function renderChart(){
+const sel=$('cEx'),cur=sel.value,ns=names();
+sel.innerHTML='<option value="*">All exercises</option>'+ns.map(n=>`<option>${esc(n)}</option>`).join('');
+sel.value=ns.includes(cur)||cur==='*'?cur:(ns[0]?'*':'*');
+const m=$('cM').value,type=$('cT').value,days=byDate(),labels=days.map(d=>fmt(d[0]));
+const use=sel.value==='*'?ns:[sel.value];
+const css=getComputedStyle(document.documentElement),ink=css.getPropertyValue('--mut'),grid=css.getPropertyValue('--line');
+const ds=use.map((n,i)=>({label:n,data:days.map(d=>d[1][n]?met(d[1][n],m):null),borderColor:PAL[i%8],backgroundColor:PAL[i%8],spanGaps:true,tension:.25,pointRadius:4}));
+if(chart)chart.destroy();
+chart=new Chart($('cv'),{type,data:{labels,datasets:ds},options:{responsive:true,maintainAspectRatio:false,scales:{x:{ticks:{color:ink},grid:{color:grid}},y:{title:{display:true,text:ML[m],color:ink},ticks:{color:ink},grid:{color:grid}}},plugins:{legend:{labels:{color:ink}}}}});
+}
+['cEx','cM','cT'].forEach(id=>$(id).addEventListener('change',renderChart));
+
+// ---------- Report ----------
+function renderReport(){
+const days=byDate($('rF').value,$('rT').value),ns=[...new Set(days.flatMap(d=>Object.keys(d[1])))].sort();
+if(!days.length){$('rOut').innerHTML='<div class="card">No sessions in this date range.</div>';return}
+const all=days.flatMap(d=>Object.values(d[1]).flat());
+const rows=ns.map(n=>{const ds=days.filter(d=>d[1][n]),tops=ds.map(d=>met(d[1][n],'top')),f=tops[0],l=tops[tops.length-1],ch=l-f,pc=f?Math.round(ch/f*100):0;
+const cls=ch>0?'up':ch<0?'dn':'';
+return `<tr><td>${esc(n)}</td><td>${ds.length}</td><td>${f} → ${l}</td><td class="${cls}">${ch>0?'+':''}${ch} kg (${pc>0?'+':''}${pc}%)</td><td>${Math.max(...ds.map(d=>met(d[1][n],'rm')))}</td><td>${sum(ds,d=>met(d[1][n],'vol')).toLocaleString()}</td><td>${sum(ds,d=>met(d[1][n],'reps'))}</td></tr>`}).join('');
+$('rOut').innerHTML=`<div class="tiles"><div><b>${days.length}</b><small>training days</small></div><div><b>${all.length}</b><small>sets</small></div><div><b>${sum(all,t=>t.reps)}</b><small>reps</small></div><div><b>${Math.round(sum(all,t=>t.reps*t.kg)).toLocaleString()}</b><small>kg lifted in total</small></div></div>
+<div class="card scroll"><p style="margin-top:0">${fmt(days[0][0])} to ${fmt(days[days.length-1][0])}: heaviest weight per exercise, first day to last day.</p><table><tr><th>Exercise</th><th>Days</th><th>Heaviest kg</th><th>Change</th><th>Best est. max</th><th>Volume kg</th><th>Reps</th></tr>${rows}</table></div>`;
+}
+['rF','rT'].forEach(id=>$(id).addEventListener('change',renderReport));
+
+// ---------- tabs ----------
+function refresh(){renderChart();renderReport()}
+$('nav').addEventListener('click',e=>{const t=e.target.dataset.t;if(!t)return;
+document.querySelectorAll('nav button,section').forEach(x=>x.classList.remove('on'));e.target.classList.add('on');$(t).classList.add('on');
+if(t==='charts')renderChart();if(t==='report')renderReport()});
+renderLog();refresh();save();$('save').textContent='';
+</script>
+</body>
+</html>
